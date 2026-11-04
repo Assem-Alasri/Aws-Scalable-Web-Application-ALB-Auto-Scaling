@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800">
+  <rect width="1000" height="800" fill="#ffffff"/>
+  <text x="500" y="40" font-family="sans-serif" font-size="24" text-anchor="middle" font-weight="bold">AWS Scalable Web Application Architecture</text>
+  
+  <rect x="50" y="80" width="900" height="700" fill="none" stroke="#e8702a" stroke-width="2" stroke-dasharray="5,5"/>
+  <text x="60" y="100" font-family="sans-serif" font-size="14" fill="#e8702a">AWS Region</text>
+
+  <rect x="80" y="120" width="840" height="640" fill="none" stroke="#87919e" stroke-width="2" stroke-dasharray="5,5"/>
+  <text x="90" y="140" font-family="sans-serif" font-size="14" fill="#87919e">Amazon VPC</text>
+
+  <rect x="100" y="160" width="390" height="580" fill="none" stroke="#00a4a6" stroke-width="2" stroke-dasharray="5,5"/>
+  <text x="110" y="180" font-family="sans-serif" font-size="14" fill="#00a4a6">Availability Zone A</text>
+
+  <rect x="510" y="160" width="390" height="580" fill="none" stroke="#00a4a6" stroke-width="2" stroke-dasharray="5,5"/>
+  <text x="520" y="180" font-family="sans-serif" font-size="14" fill="#00a4a6">Availability Zone B</text>
+  
+  <!-- Add subnet representation boxes -->
+  <rect x="120" y="200" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="130" y="220" font-family="sans-serif" font-size="12">Public Subnet A</text>
+
+  <rect x="120" y="380" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="130" y="400" font-family="sans-serif" font-size="12">Private Application Subnet A (EC2 instances)</text>
+
+  <rect x="120" y="560" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="130" y="580" font-family="sans-serif" font-size="12">Private Database Subnet A (RDS Primary)</text>
+  
+  <rect x="530" y="200" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="540" y="220" font-family="sans-serif" font-size="12">Public Subnet B</text>
+
+  <rect x="530" y="380" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="540" y="400" font-family="sans-serif" font-size="12">Private Application Subnet B (EC2 instances)</text>
+
+  <rect x="530" y="560" width="350" height="150" fill="#e6f6f7" stroke="#00a4a6" stroke-width="1"/>
+  <text x="540" y="580" font-family="sans-serif" font-size="12">Private Database Subnet B (RDS Standby)</text>
+
+  <text x="500" y="780" font-family="sans-serif" font-size="12" text-anchor="middle">Note: Simplified structural SVG representation. Open architecture.drawio for official AWS icons.</text>
+</svg>

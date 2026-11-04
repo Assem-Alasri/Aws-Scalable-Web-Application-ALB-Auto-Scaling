@@ -1,0 +1,23 @@
+graph TD
+    User([End Users]) --> Route53[Amazon Route 53]
+    Route53 --> CF[Amazon CloudFront]
+    Route53 --> WAF_ALB[AWS WAF]
+    CF --> WAF_ALB
+    
+    subgraph Region [AWS Region]
+        subgraph VPC [Amazon VPC]
+            WAF_ALB --> ALB[Application Load Balancer]
+            
+            subgraph AZ_A [Availability Zone A]
+                ALB --> APP_A[Private App Subnet A]
+                APP_A --> DB_A[Private DB Subnet A]
+            end
+            
+            subgraph AZ_B [Availability Zone B]
+                ALB --> APP_B[Private App Subnet B]
+                APP_B --> DB_B[Private DB Subnet B]
+            end
+        end
+        SSM[AWS Systems Manager] -.-> APP_A
+        SSM -.-> APP_B
+    end
