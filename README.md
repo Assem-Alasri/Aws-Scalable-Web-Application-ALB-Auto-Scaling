@@ -10,6 +10,7 @@ Repository scope: This repository contains the architecture diagram and project 
 
 1. [Project Overview](#-project-overview)
 2. [System Architecture Diagram](#-system-architecture-diagram)
+   - [Diagram Flow Deep Dive](#Diagram_Flow_Deep_Dive)
 3. [Infrastructure & Component Breakdown](#-infrastructure--component-breakdown)
    - [1. Network Layer (VPC & Subnet Topology)](#1-network-layer-vpc--subnet-topology)
    - [2. Edge & Perimeter Security Layer (Route 53, CloudFront & WAF)](#2-edge--perimeter-security-layer-route-53-cloudfront--waf)
@@ -19,8 +20,11 @@ Repository scope: This repository contains the architecture diagram and project 
    - [6. Observability & Telemetry (CloudWatch & SNS)](#6-observability--telemetry-cloudwatch--sns)
 4. [Chained Security Groups Matrix](#-chained-security-groups-matrix)
 5. [End-to-End Traffic Flow](#-end-to-end-traffic-flow)
-6. [Disaster Recovery & SLA Strategy](#-disaster-recovery--sla-strategy)
-7. [License](#-license)
+6. [ Deployment Sequence](#Deployment_Sequence)
+7. [ Acceptance Checklist](#Acceptance_Checklist)
+8. [ Repository Structure](#Repository_Structure)
+9. [ Publish to GitHub](#Publish_to_GitHub)
+10. [Official AWS References](#Official_AWS_References)
 
 ---
 
@@ -39,8 +43,9 @@ This project provides an enterprise-ready, automated infrastructure baseline eng
 
 The diagram below illustrates the end-to-end data flow from global end-users through AWS Edge services, load balancing, private compute tiers, and resilient persistence layers:
 
-![AWS Scalable Web Application Architecture](docs/aws-scalable-webapp.drawio.jpg)
+![AWS Scalable Web Application Architecture](docs/aws-scalable-webapp.png)
 
+### Diagram Flow Deep Dive
 ```text
 [Users Worldwide]
        │
@@ -233,17 +238,82 @@ Response traverses identical reverse path back to the client.
 EC2 Instance (Private Subnet) ──► Private Route Table ──► NAT Gateway (Public Subnet) ──► Internet Gateway ──► Upstream Repositories (GitHub, OS Mirrors)
 ```
 
-## ⏱ Disaster Recovery & SLA Strategy
+## Deployment Sequence
 
-| Failure Scenario | Detection & Mitigation Mechanism | RPO (Data Loss) | RTO (Recovery Time) |
-| :--- | :--- | :--- | :--- |
-| **Single EC2 Node Failure** | ALB Target Group health check fails; ASG terminates and replaces the node automatically. | 0 seconds | < 3 minutes |
-| **Full AZ Outage (`AZ-a` or `AZ-b`)** | ALB shifts 100% of ingress to the remaining healthy AZ; ASG scales instances up in the surviving AZ. | 0 seconds | Immediate (Seamless) |
-| **Primary Database Hardware Failure** | RDS internal health monitor initiates automated failover to the synchronous Standby node. | 0 seconds (Synchronous replication) | 60 – 120 seconds |
-| **DDoS / HTTP Flood Attack** | AWS WAF rate-limiting rules block malicious IPs at the edge before hitting the origin. | N/A | Real-time mitigation |
+A safe implementation sequence is:
+
+1. **Plan:** select Region, domain, CIDR ranges, database engine, instance family, environment names, RTO/RPO and cost ceiling.
+2. **Network:** create VPC, two AZs, six subnets, route tables, IGW, NAT Gateways and VPC endpoints.
+3. **Security foundation:** create security groups, NACL policy, KMS keys, IAM roles and Secrets Manager secret.
+4. **Database:** create DB subnet group, encrypted RDS Multi-AZ database, parameter/option settings, backup retention and DB security group.
+5. **Application image:** build and test the application AMI or bootstrap artifact; install SSM Agent and CloudWatch Agent.
+6. **Compute:** create Launch Template and ASG across both private app subnets.
+7. **Load balancing:** create ALB, HTTPS listener, target group and readiness health check; validate target registration.
+8. **Edge and security:** create private S3 bucket, OAC, CloudFront origins/behaviors, CloudFront Web ACL and ALB-origin restrictions.
+9. **DNS and TLS:** create ACM certificates in the required Regions and Route 53 A/AAAA Alias records.
+10. **Operations:** configure CloudWatch dashboards/alarms, SNS subscriptions, SSM session logging and CloudTrail.
+11. **Validation:** run application, security, load, AZ-failure, RDS failover, backup-restore and notification tests.
 
 ---
 
-## 📜 License
+## Acceptance Checklist
 
-This project is open-source software licensed under the [MIT License](LICENSE).
+- [ ] VPC and all six subnets deployed across two AZs with non-overlapping CIDRs.
+- [ ] Public route tables route to the IGW; each private app subnet routes to its same-AZ NAT Gateway.
+- [ ] Database subnets have no general internet route.
+- [ ] ALB is enabled in both public subnets and targets only private EC2 instances.
+- [ ] EC2 instances have no public IP and are managed by an ASG spanning both AZs.
+- [ ] Target group health checks and ASG ELB health checks are verified.
+- [ ] CloudFront static behavior uses S3 OAC; dynamic behavior uses the ALB origin.
+- [ ] Authenticated/personalized paths are not cached unintentionally.
+- [ ] WAF is associated with CloudFront and the intended rules are tested.
+- [ ] ALB origin access is restricted to CloudFront and direct requests are denied.
+- [ ] RDS is private, encrypted, Multi-AZ, backed up, and recoverable through a tested restore.
+- [ ] Application reconnect behavior is tested during RDS failover.
+- [ ] Session Manager works without opening inbound SSH.
+- [ ] CloudWatch dashboards and alarms are verified; SNS notifications are received.
+- [ ] Load, scale-out/scale-in, single-instance loss, AZ loss, and database recovery tests are recorded.
+
+---
+
+## Repository Structure
+
+```text
+Aws-Scalable-Web-Application-ALB-Auto-Scaling/
+├── README.md
+├── .gitignore
+└── docs/
+    ├── aws-scalable-webapp.png
+    ├── aws-scalable-webapp.drawio
+```
+---
+## 9. Publish to GitHub
+
+1. Create an **empty public repository** on GitHub named `aws-scalable-web-app` (do not initialize it with another README or license).
+2. Extract this package and run the following commands from the project directory:
+
+```bash
+git init -b main
+git add .
+git commit -m "docs: add AWS scalable web app architecture"
+git remote add origin [https://github.com/](https://github.com/)<GITHUB-USERNAME>/aws-scalable-web-app.git
+git push -u origin main
+```
+---
+
+## Official AWS References
+
+- [Route 53: Route traffic to a CloudFront distribution](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/routing-to-cloudfront-distribution.html)
+- [CloudFront: Restrict access to an Amazon S3 origin with OAC](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html)
+- [CloudFront: Restrict access to an Application Load Balancer](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html)
+- [AWS WAF: Resources that can be protected](https://docs.aws.amazon.com/waf/latest/developerguide/how-aws-waf-works-resources.html)
+- [Application Load Balancer: Create an ALB](https://docs.aws.amazon.com/elasticloadbalancing/latest/application/create-application-load-balancer.html)
+- [EC2 Auto Scaling: Target tracking scaling policies](https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-scaling-target-tracking.html)
+- [VPC: NAT Gateway basics and AZ resilience](https://docs.aws.amazon.com/vpc/latest/userguide/nat-gateway-basics.html)
+- [RDS: Multi-AZ DB instance deployments](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)
+- [RDS: Multi-AZ failover](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZ.Failover.html)
+- [RDS: Automated backups and point-in-time recovery](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html)
+- [Systems Manager: VPC endpoints](https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-create-vpc.html)
+- [Systems Manager: Session Manager with PrivateLink](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-getting-started-privatelink.html)
+
+---
