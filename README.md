@@ -1,6 +1,8 @@
 # 🚀 High-Availability & Scalable Web Application on AWS
 
-A production-grade, highly available, and fault-tolerant 3-tier web application architecture designed and deployed on Amazon Web Services (AWS) across two Availability Zones (Multi-AZ), adhering to the best practices of the **AWS Well-Architected Framework**.
+A production-oriented reference architecture for deploying a scalable web application on AWS. The design separates edge delivery, application compute, and database services; places EC2 instances in private subnets; and uses two Availability Zones to reduce single-AZ dependency.
+
+Repository scope: This repository contains the architecture diagram and project documentation. It does not claim that the infrastructure has already been deployed, and it does not yet include Terraform/CloudFormation implementation code. Deployment evidence, measured performance, and actual cost figures should be added after the environment is built and tested.
 
 ---
 
