@@ -17,10 +17,8 @@ A production-grade, highly available, and fault-tolerant 3-tier web application 
    - [6. Observability & Telemetry (CloudWatch & SNS)](#6-observability--telemetry-cloudwatch--sns)
 4. [Chained Security Groups Matrix](#-chained-security-groups-matrix)
 5. [End-to-End Traffic Flow](#-end-to-end-traffic-flow)
-6. [Repository Structure](#-repository-structure)
-7. [Deployment & Verification](#-deployment--verification)
-8. [Disaster Recovery & SLA Strategy](#-disaster-recovery--sla-strategy)
-9. [License](#-license)
+6. [Disaster Recovery & SLA Strategy](#-disaster-recovery--sla-strategy)
+7. [License](#-license)
 
 ---
 
@@ -232,87 +230,6 @@ Response traverses identical reverse path back to the client.
 ```text
 EC2 Instance (Private Subnet) ──► Private Route Table ──► NAT Gateway (Public Subnet) ──► Internet Gateway ──► Upstream Repositories (GitHub, OS Mirrors)
 ```
-
----
-
-## 📁 Repository Structure
-
-```text
-├── .github/
-│   └── workflows/
-│       └── terraform-ci.yml        # Automated linting, security scanning & validation
-├── docs/
-│   ├── aws-scalable-webapp.drawio.jpg # Architectural diagram image file
-│   └── security-matrix.md          # IAM policies, least privilege & audit matrix
-├── terraform/                      # Infrastructure as Code (IaC) directory
-│   ├── main.tf                     # Root provider and core configuration
-│   ├── variables.tf                # Global input variables
-│   ├── outputs.tf                  # Infrastructure outputs (ALB DNS, CloudFront CNAME)
-│   ├── terraform.tfvars.example    # Sample variable assignment file
-│   └── modules/
-│       ├── vpc/                    # Subnets, route tables, and gateways
-│       ├── security/               # Security groups, NACLs, and AWS WAF rules
-│       ├── alb/                    # Application Load Balancer and ACM listeners
-│       ├── asg/                    # Launch templates and Auto Scaling policies
-│       ├── rds/                    # Multi-AZ relational database infrastructure
-│       └── monitoring/             # CloudWatch dashboards, alarms, and SNS topics
-├── scripts/
-│   ├── user-data.sh                # Node bootstrapping and runtime initialization
-│   └── simulate-failover.sh        # Controlled RDS Multi-AZ failover drill script
-├── .gitignore
-├── LICENSE
-└── README.md
-```
-
----
-
-## 🚀 Deployment & Verification
-
-### Prerequisites
-* Active AWS Account with administrative access.
-* Configured [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
-* [Terraform CLI](https://developer.hashicorp.com/terraform/install) (version $\ge$ 1.5).
-
-### Step 1: Clone Repository & Configure Variables
-```bash
-git clone https://github.com/<your-username>/aws-scalable-webapp.git
-cd aws-scalable-webapp/terraform
-cp terraform.tfvars.example terraform.tfvars
-```
-
-### Step 2: Provision Infrastructure with Terraform
-```bash
-# Initialize Terraform working directory and download modules
-terraform init
-
-# Validate syntax and view planned execution
-terraform plan
-
-# Provision cloud resources
-terraform apply -auto-approve
-```
-
-### Step 3: Post-Deployment Verification Drills
-
-* **Verify SSH-less Access (SSM Session Manager):**
-  ```bash
-  aws ssm start-session --target <INSTANCE_ID>
-  ```
-
-* **Verify ALB Endpoint & Health Checks:**
-  ```bash
-  curl -I https://<your-alb-or-cloudfront-domain>/health
-  # Expected Response: HTTP/2 200 OK
-  ```
-
-* **Execute Controlled Database Failover Test:**
-  ```bash
-  aws rds reboot-db-instance \
-      --db-instance-identifier <your-rds-db-id> \
-      --force-failover
-  ```
-
----
 
 ## ⏱ Disaster Recovery & SLA Strategy
 
