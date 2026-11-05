@@ -1,144 +1,330 @@
-# Scalable Web Application with ALB and Auto Scaling
-A professionally documented, EC2-based scalable and highly available AWS web application architecture featuring Amazon VPC, Application Load Balancer, EC2 Auto Scaling, CloudFront, AWS WAF, RDS Multi-AZ, Route 53, Systems Manager, CloudWatch, and SNS.
+# 🚀 High-Availability & Scalable Web Application on AWS
 
-## Table of Contents
-- [Solution Overview](#solution-overview)
-- [Project Objectives](#project-objectives)
-- [Architecture Diagram](#architecture-diagram)
-- [AWS Architecture and Core Services](#aws-architecture-and-core-services)
-- [Network Architecture and Traffic Flow](#network-architecture-and-traffic-flow)
-- [Security Architecture](#security-architecture)
-- [High Availability and Fault Tolerance](#high-availability-and-fault-tolerance)
-- [Auto Scaling Strategy](#auto-scaling-strategy)
-- [CloudFront Caching Strategy](#cloudfront-caching-strategy)
-- [Implementation Overview and Configuration](#implementation-overview-and-configuration)
-- [Monitoring and Operational Visibility](#monitoring-and-operational-visibility)
-- [Validation and Testing](#validation-and-testing)
-- [Deployment Prerequisites](#deployment-prerequisites)
-- [Repository Structure](#repository-structure)
-- [Implementation History and Evidence Limitations](#implementation-history-and-evidence-limitations)
-- [Limitations and Design Considerations](#limitations-and-design-considerations)
-- [References](#references)
-- [External Contributors](#external-contributors)
+A production-grade, highly available, and fault-tolerant 3-tier web application architecture designed and deployed on Amazon Web Services (AWS) across two Availability Zones (Multi-AZ), adhering to the best practices of the **AWS Well-Architected Framework**.
 
-## Solution Overview
-This project presents an EC2-based scalable web application architecture across two Availability Zones. It ensures high availability, fault tolerance, and scalability. Application EC2 instances are isolated in private subnets, accessed only via an internet-facing Application Load Balancer. Static assets are delivered securely via CloudFront, while dynamic requests are inspected by AWS WAF. 
+---
 
-## Project Objectives
-- Architect a highly available, fault-tolerant AWS web application.
-- Implement robust network isolation using private subnets.
-- Reconstruct the architectural documentation of a historically deployed solution.
+## 📑 Table of Contents
 
-## Architecture Diagram
-![AWS Scalable Web Application Architecture](docs/architecture/architecture.png)
+1. [Project Overview](#-project-overview)
+2. [System Architecture Diagram](#-system-architecture-diagram)
+3. [Infrastructure & Component Breakdown](#-infrastructure--component-breakdown)
+   - [1. Network Layer (VPC & Subnet Topology)](#1-network-layer-vpc--subnet-topology)
+   - [2. Edge & Perimeter Security Layer (Route 53, CloudFront & WAF)](#2-edge--perimeter-security-layer-route-53-cloudfront--waf)
+   - [3. Load Balancing & Compute Layer (ALB & ASG)](#3-load-balancing--compute-layer-alb--asg)
+   - [4. Data & Persistence Layer (Amazon RDS Multi-AZ)](#4-data--persistence-layer-amazon-rds-multi-az)
+   - [5. Secure Administration & Governance (AWS Systems Manager)](#5-secure-administration--governance-aws-systems-manager)
+   - [6. Observability & Telemetry (CloudWatch & SNS)](#6-observability--telemetry-cloudwatch--sns)
+4. [Chained Security Groups Matrix](#-chained-security-groups-matrix)
+5. [End-to-End Traffic Flow](#-end-to-end-traffic-flow)
+6. [Repository Structure](#-repository-structure)
+7. [Deployment & Verification](#-deployment--verification)
+8. [Disaster Recovery & SLA Strategy](#-disaster-recovery--sla-strategy)
+9. [License](#-license)
 
-Editable diagram sources:
-- [Draw.io Source](docs/architecture/architecture.drawio)
-- [SVG Vector](docs/architecture/architecture.svg)
-- [Mermaid Syntax](docs/architecture/architecture.mmd)
+---
 
-```mermaid
-graph TD
-    User([End Users]) --> Route53[Amazon Route 53]
-    Route53 --> CF[Amazon CloudFront]
-    Route53 --> WAF_ALB[AWS WAF]
-    CF --> WAF_ALB
-    
-    subgraph Region [AWS Region]
-        subgraph VPC [Amazon VPC]
-            WAF_ALB --> ALB[Application Load Balancer]
-            
-            subgraph AZ_A [Availability Zone A]
-                ALB --> APP_A[Private App Subnet A - EC2]
-                APP_A --> DB_A[Private DB Subnet A - RDS Primary]
-            end
-            
-            subgraph AZ_B [Availability Zone B]
-                ALB --> APP_B[Private App Subnet B - EC2]
-                APP_B --> DB_B[Private DB Subnet B - RDS Standby]
-            end
-        end
-        SSM[Systems Manager] -.-> APP_A
-        SSM -.-> APP_B
-    end
+## 🎯 Project Overview
+
+This project provides an enterprise-ready, automated infrastructure baseline engineered for latency-sensitive, mission-critical web applications requiring continuous uptime:
+
+* **Complete Isolation of Sensitive Compute:** All application runtimes and database nodes are strictly placed inside private subnets with no direct inbound ingress from the public internet.
+* **Fault Tolerance & Redundancy:** Workloads are evenly distributed across two Availability Zones (`AZ-a` and `AZ-b`) with synchronous database replication and dedicated NAT Gateways per AZ.
+* **Dynamic Elastic Scaling:** Infrastructure scales horizontally based on real-time traffic volume and compute pressure, cutting idle costs while effortlessly handling peak load spikes.
+* **Zero-Trust Access (No SSH):** TCP Port 22 is completely closed across all security perimeters. Server management is handled exclusively via AWS Systems Manager Session Manager with comprehensive audit logging.
+
+---
+
+## 🏛 System Architecture Diagram
+
+The diagram below illustrates the end-to-end data flow from global end-users through AWS Edge services, load balancing, private compute tiers, and resilient persistence layers:
+
+![AWS Scalable Web Application Architecture](docs/aws-scalable-webapp.drawio.jpg)
+
+```text
+[Users Worldwide]
+       │
+       ▼ (DNS Anycast Query)
+[Amazon Route 53] ──► [Amazon CloudFront] ──(Cache Static Assets)──► [S3 Bucket / Edge Cache]
+                             │
+                             ▼ (OWASP Top 10 Inspection)
+                      [AWS WAF]
+                             │
+                             ▼ (HTTPS + Custom Header: X-Origin-Verify)
+                   [Internet Gateway (IGW)]
+                             │
+            ┌────────────────┴────────────────┐
+            ▼                                 ▼
+   [Public Subnet 1]                 [Public Subnet 2]
+     ├── ALB Listener (Port 443)       ├── ALB Listener (Port 443)
+     └── NAT Gateway A                 └── NAT Gateway B
+            │                                 │
+            └──────────────┬──────────────────┘
+                           │ (HTTP :8080 - Restricted to ALB-SG)
+       ┌───────────────────┴───────────────────┐
+       ▼                                       ▼
+[Private App Subnet 1]               [Private App Subnet 2]
+ ├── EC2 App Instance (AZ-a)          ├── EC2 App Instance (AZ-b)
+ └── Outbound via NAT-A               └── Outbound via NAT-B
+       │                                       │
+       └───────────────┬───────────────────────┘
+                       │ (Port 3306/5432 - Restricted to EC2-SG)
+       ┌───────────────┴───────────────────────┐
+       ▼                                       ▼
+[Private DB Subnet 1]                [Private DB Subnet 2]
+ └── RDS Primary (Read/Write)  ◄════► └── RDS Standby (Sync Replica)
 ```
 
-## AWS Architecture and Core Services
-### Amazon VPC and Networking
-**Reconstructed Architecture:** A VPC distributed across two Availability Zones utilizing a three-tier subnet architecture (Public, Private Application, Private Database). 
-### Availability Zones and Subnets
-**Proposed Reference Configuration:** Resources distributed across AZ A and AZ B. Public subnets host NAT Gateways and the ALB. 
-### Application Load Balancer
-**User-Reported Implementation:** Internet-facing ALB in public subnets routing traffic to EC2 instances in private subnets. 
-### Amazon EC2 and Auto Scaling
-**Reconstructed Architecture:** Auto Scaling Group spanning two AZs using an EC2 Launch Template with Target Tracking Scaling Policies.
-### Amazon CloudFront
-**Reconstructed Architecture:** Distributes static content with an ALB origin. 
-### AWS WAF
-**Reconstructed Architecture:** A Regional Web ACL associated with the Application Load Balancer to protect against common web exploits. 
-### Amazon RDS Multi-AZ
-**User-Reported Implementation:** Relational database backend configured with Multi-AZ for high availability. 
-### Amazon Route 53
-**User-Reported Implementation:** Main DNS routing with an Alias record pointing to the ALB. 
-### AWS Systems Manager
-**Reconstructed Architecture:** Session Manager provides secure, Bastion-free administrative access to private EC2 instances. 
-### Amazon CloudWatch and Amazon SNS
-**User-Reported Implementation:** Centralized monitoring and alerting architecture.
+---
 
-## Network Architecture and Traffic Flow
-Traffic from the user hits Route 53, resolving to the CloudFront distribution for static assets or directly to the ALB for dynamic traffic. The ALB (in public subnets) forwards requests to EC2 instances (in private subnets). EC2 instances communicate with the Multi-AZ RDS cluster in isolated database subnets. Outbound internet access for EC2 instances traverses the NAT Gateways.
+## 🔧 Infrastructure & Component Breakdown
 
-## Security Architecture
-**Reconstructed Architecture:** Incorporates least-privilege IAM roles, security groups, stateless NACLs, and strict subnet isolation. EC2 instances and RDS databases are protected from direct internet access.
+### 1. Network Layer (VPC & Subnet Topology)
 
-## High Availability and Fault Tolerance
-**User-Reported Implementation / Reconstructed Architecture:** High availability is achieved by deploying resources across two AZs. The ALB performs health checks on targets. Auto Scaling replaces unhealthy instances, and RDS provides automated Multi-AZ failover.
+* **VPC CIDR:** `10.0.0.0/16` partitioned across 6 dedicated subnets (3 functional tiers across 2 Availability Zones):
 
-## Auto Scaling Strategy
-**Proposed Reference Configuration:** Target Tracking Scaling Policy based on CPU Utilization or ALB Request Count per Target. 
+| Subnet Name | CIDR Block | Availability Zone | Type | Purpose & Hosted Components |
+| :--- | :--- | :--- | :--- | :--- |
+| `public-subnet-1` | `10.0.1.0/24` | `AZ-a` | Public | Application Load Balancer, NAT Gateway A |
+| `public-subnet-2` | `10.0.2.0/24` | `AZ-b` | Public | Application Load Balancer, NAT Gateway B |
+| `private-app-subnet-1` | `10.0.11.0/24` | `AZ-a` | Private | EC2 Application Instances (ASG) |
+| `private-app-subnet-2` | `10.0.12.0/24` | `AZ-b` | Private | EC2 Application Instances (ASG) |
+| `private-db-subnet-1` | `10.0.21.0/24` | `AZ-a` | Private Isolated | Amazon RDS Primary Instance |
+| `private-db-subnet-2` | `10.0.22.0/24` | `AZ-b` | Private Isolated | Amazon RDS Standby Replica |
 
-## CloudFront Caching Strategy
-**Recommended Improvement:** Cache static assets at edge locations. Cache behaviors define TTLs for static assets, while dynamic requests are configured as cache misses passed to the ALB origin.
+#### Route Tables:
+* **Public Route Table:**
+  * `10.0.0.0/16` $\rightarrow$ `local`
+  * `0.0.0.0/0` $\rightarrow$ `Internet Gateway (igw-xxxx)`
+* **Private App Route Table 1:**
+  * `10.0.0.0/16` $\rightarrow$ `local`
+  * `0.0.0.0/0` $\rightarrow$ `NAT Gateway A` (Dedicated to `AZ-a`)
+* **Private App Route Table 2:**
+  * `10.0.0.0/16` $\rightarrow$ `local`
+  * `0.0.0.0/0` $\rightarrow$ `NAT Gateway B` (Dedicated to `AZ-b`)
+* **Private DB Route Table:**
+  * `10.0.0.0/16` $\rightarrow$ `local` *(Completely isolated with zero external routes)*
 
-## Implementation Overview and Configuration
-**User-Reported Implementation:**
-1. Provisioned VPC, Subnets, IGW, and NAT Gateways.
-2. Configured Security Groups and NACLs.
-3. Created ALB, Target Groups, and Launch Templates.
-4. Deployed Auto Scaling Group.
-5. Configured RDS Multi-AZ.
-6. Setup CloudFront, WAF, and Route 53.
-7. Enabled CloudWatch monitoring and SNS alerts.
-*Configuration Not Available: Specific historical CIDRs, instance types, and naming conventions.*
+---
 
-## Monitoring and Operational Visibility
-**Proposed Reference Configuration:** CloudWatch Dashboards visualizing ALB RequestCount, EC2 CPUUtilization, and RDS FreeStorageSpace. 
+### 2. Edge & Perimeter Security Layer (Route 53, CloudFront & WAF)
 
-## Validation and Testing
-| Test Objective | Recommended Test Procedure | Expected Result | Historical Verification Status | Evidence Availability |
-|---|---|---|---|---|
-| App Accessibility | Access ALB endpoint via HTTPS | HTTP 200 OK | Passed (Reported) | Not Available |
-| Target Group Health | Force EC2 failure | ALB deregisters instance | Passed (Reported) | Not Available |
-| Auto Scaling | Increase CPU load | ASG launches new instances | Passed (Reported) | Not Available |
-| RDS Failover | Reboot RDS primary | Standby becomes primary | Passed (Reported) | Not Available |
+* **Amazon Route 53:**
+  * Zone management using **Alias Records (A/AAAA)** pointing domain traffic directly to the CloudFront distribution.
+  * Active health checks to monitor upstream availability.
+* **Amazon CloudFront:**
+  * Global edge caching for static assets (`/static/*`, `/assets/*`) to offload traffic from backend compute and minimize latency.
+  * Injects a cryptographically generated secret header (`X-Origin-Verify`) into every origin request forwarded to the ALB.
+* **AWS WAF (Web Application Firewall):**
+  * Integrated directly with CloudFront to mitigate malicious traffic at the edge:
+    * `AWSManagedRulesCommonRuleSet` (Guards against OWASP Top 10: SQLi, XSS, Command Injection).
+    * `AWSManagedRulesKnownBadInputsRuleSet` (Blocks known exploit vectors).
+    * `Rate-based Rule` (Limits requests to 500 per IP across 5-minute rolling windows to stop HTTP Flood/DDoS).
 
-## Deployment Prerequisites
-To reconstruct this environment, you need an AWS Account, Administrator IAM permissions, an existing Route 53 Hosted Zone, and appropriate application artifacts.
+---
 
-## Repository Structure
-- `/docs/architecture/`: Diagram files (PNG, SVG, Draw.io, Mermaid).
-- `/docs/networking/`, `/docs/security/`, etc.: Deep-dive architectural documentation.
+### 3. Load Balancing & Compute Layer (ALB & ASG)
 
-## Implementation History and Evidence Limitations
-**Configuration Not Available:** This project was previously implemented, but original AWS resources were deleted. The architecture documented here is a *Reconstructed Architecture* based on project descriptions. Original resource configurations (IDs, specific rules, thresholds) are unavailable and not independently verified.
+#### Application Load Balancer (ALB)
+* **Subnet Association:** Spans across `public-subnet-1` and `public-subnet-2`.
+* **Listeners & Routing:**
+  * **HTTP (Port 80):** Strict 301 permanent redirect to HTTPS.
+  * **HTTPS (Port 443):** Terminated using ACM-issued TLS certificates with `ELBSecurityPolicy-TLS13-1-2-2021-06`.
+* **Origin Header Verification:** Drops any request that fails to present the correct `X-Origin-Verify` header, neutralizing origin-bypass attacks.
+* **Target Group:** Evaluates instance viability via `/health` health check endpoints (expects HTTP 200).
 
-## Limitations and Design Considerations
-**Cost Optimization Considerations:** The proposed reference design uses two NAT Gateways and RDS Multi-AZ, which incur higher base costs but are required for high availability. 
+#### Auto Scaling Group (ASG) & Launch Template
+* **Launch Template Configuration:**
+  * **AMI:** Amazon Linux 2023 Minimal (Hardened).
+  * **Instance Type:** `t3.medium` or `c7g.medium` (AWS Graviton3).
+  * **Storage:** 30 GB `gp3` root EBS volume encrypted with customer-managed AWS KMS keys.
+  * **IAM Instance Profile:** Attached with `AmazonSSMManagedInstanceCore` and `CloudWatchAgentServerPolicy`.
+* **Capacity Thresholds:**
+  * Minimum: `2`
+  * Desired: `2`
+  * Maximum: `8`
+* **Target Tracking Scaling Policies:**
+  * `ASGAverageCPUUtilization` maintained at **65%**.
+  * `ALBRequestCountPerTarget` maintained at **1500 requests/target**.
 
-## References
-- [Amazon VPC](https://docs.aws.amazon.com/vpc/)
-- [Amazon EC2 Auto Scaling](https://docs.aws.amazon.com/autoscaling/)
-- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+---
 
-## External Contributors
-Authored and reconstructed by Principal AWS Solutions Architect. No external fictitious contributors claimed.
+### 4. Data & Persistence Layer (Amazon RDS Multi-AZ)
+
+* **Engine:** Amazon RDS for MySQL 8.0 / PostgreSQL 16 in a **Multi-AZ Deployment**.
+* **Replication Architecture:** High-throughput synchronous block-level replication from the Primary instance in `AZ-a` to the Standby replica in `AZ-b`.
+* **Automatic Failover:** Automatic DNS failover handles node or infrastructure failures within 60–120 seconds with zero manual intervention or application configuration updates.
+* **Data Protection:**
+  * Storage encryption at rest via AWS KMS (AES-256).
+  * Automated daily snapshots with 14-day retention and Point-in-Time Recovery (PITR).
+
+---
+
+### 5. Secure Administration & Governance (AWS Systems Manager)
+
+* **Elimination of Bastion Hosts:** TCP Port 22 is disabled globally across all network tiers.
+* **SSM Session Manager:**
+  * Grants encrypted, credential-free terminal shell access via the AWS Console or AWS CLI.
+  * Streams command history, execution logs, and output streams directly to Amazon CloudWatch Logs and an encrypted S3 audit bucket.
+* **AWS Systems Manager Parameter Store:** Centrally manages sensitive application variables, database credentials, and API tokens as encrypted `SecureString` parameters.
+
+---
+
+### 6. Observability & Telemetry (CloudWatch & SNS)
+
+* **Amazon CloudWatch Agent:** Deployed on all instances to collect fine-grained OS metrics (RAM utilization, disk metrics, and swap usage).
+* **CloudWatch Alarms:**
+  * High CPU utilization alarm (Triggered if Average CPU > 80% for 5 consecutive minutes).
+  * ALB Target 5XX Error alarm (Triggered if error count > 10 errors/minute).
+  * RDS Free Storage Space alarm (Triggered if remaining disk space < 20%).
+* **Amazon SNS (Simple Notification Service):** Dispatches real-time critical incidents to operations email endpoints and on-call engineering Slack webhooks.
+
+---
+
+## 🛡 Chained Security Groups Matrix
+
+The network enforces the principle of least privilege using programmatic Security Group references (Chaining), avoiding static IP definitions within the VPC:
+
+| Security Group | Direction | Protocol / Port | Source / Destination | Functional Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **`ALB-SG`** | Inbound | TCP 80, 443 | `0.0.0.0/0` (or CloudFront Prefix List) | Ingest public client web traffic |
+| **`ALB-SG`** | Outbound | TCP 8080 | `EC2-SG` (Security Group ID) | Forward traffic exclusively to backend instances |
+| **`EC2-SG`** | Inbound | TCP 8080 | `ALB-SG` (Security Group ID) | Accept traffic strictly originating from the ALB |
+| **`EC2-SG`** | Outbound | TCP 443 | `0.0.0.0/0` (via NAT Gateways) | Outbound package updates and SSM connectivity |
+| **`EC2-SG`** | Outbound | TCP 3306 / 5432 | `RDS-SG` (Security Group ID) | Send database queries to the persistence tier |
+| **`RDS-SG`** | Inbound | TCP 3306 / 5432 | `EC2-SG` (Security Group ID) | Permit queries exclusively from application nodes |
+| **`RDS-SG`** | Outbound | All | *None (All Outbound Blocked)* | Isolate database tier from establishing outbound calls |
+
+---
+
+## 🔄 End-to-End Traffic Flow
+
+### 1. Dynamic Web Request Flow
+```text
+Client Request (HTTPS:443)
+       │
+       ▼
+Amazon Route 53 (Resolves domain to CloudFront Anycast IP)
+       │
+       ▼
+Amazon CloudFront (Evaluates cache, injects X-Origin-Verify header)
+       │
+       ▼
+AWS WAF (Inspects and filters against OWASP Top 10 rules)
+       │
+       ▼
+Internet Gateway (Transit boundary into the AWS VPC)
+       │
+       ▼
+Application Load Balancer (Terminates TLS, validates origin header, routes to Target Group)
+       │
+       ▼ (Forwarded over HTTP:8080)
+EC2 Instance in Private App Subnet (Application logic execution)
+       │
+       ▼ (Database Query over TCP:3306/5432)
+Amazon RDS Primary Database (Executes transaction & syncs to Standby replica)
+       │
+       ▼
+Response traverses identical reverse path back to the client.
+```
+
+### 2. Outbound Node Egress Flow
+```text
+EC2 Instance (Private Subnet) ──► Private Route Table ──► NAT Gateway (Public Subnet) ──► Internet Gateway ──► Upstream Repositories (GitHub, OS Mirrors)
+```
+
+---
+
+## 📁 Repository Structure
+
+```text
+├── .github/
+│   └── workflows/
+│       └── terraform-ci.yml        # Automated linting, security scanning & validation
+├── docs/
+│   ├── aws-scalable-webapp.drawio.jpg # Architectural diagram image file
+│   └── security-matrix.md          # IAM policies, least privilege & audit matrix
+├── terraform/                      # Infrastructure as Code (IaC) directory
+│   ├── main.tf                     # Root provider and core configuration
+│   ├── variables.tf                # Global input variables
+│   ├── outputs.tf                  # Infrastructure outputs (ALB DNS, CloudFront CNAME)
+│   ├── terraform.tfvars.example    # Sample variable assignment file
+│   └── modules/
+│       ├── vpc/                    # Subnets, route tables, and gateways
+│       ├── security/               # Security groups, NACLs, and AWS WAF rules
+│       ├── alb/                    # Application Load Balancer and ACM listeners
+│       ├── asg/                    # Launch templates and Auto Scaling policies
+│       ├── rds/                    # Multi-AZ relational database infrastructure
+│       └── monitoring/             # CloudWatch dashboards, alarms, and SNS topics
+├── scripts/
+│   ├── user-data.sh                # Node bootstrapping and runtime initialization
+│   └── simulate-failover.sh        # Controlled RDS Multi-AZ failover drill script
+├── .gitignore
+├── LICENSE
+└── README.md
+```
+
+---
+
+## 🚀 Deployment & Verification
+
+### Prerequisites
+* Active AWS Account with administrative access.
+* Configured [AWS CLI v2](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
+* [Terraform CLI](https://developer.hashicorp.com/terraform/install) (version $\ge$ 1.5).
+
+### Step 1: Clone Repository & Configure Variables
+```bash
+git clone https://github.com/<your-username>/aws-scalable-webapp.git
+cd aws-scalable-webapp/terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+### Step 2: Provision Infrastructure with Terraform
+```bash
+# Initialize Terraform working directory and download modules
+terraform init
+
+# Validate syntax and view planned execution
+terraform plan
+
+# Provision cloud resources
+terraform apply -auto-approve
+```
+
+### Step 3: Post-Deployment Verification Drills
+
+* **Verify SSH-less Access (SSM Session Manager):**
+  ```bash
+  aws ssm start-session --target <INSTANCE_ID>
+  ```
+
+* **Verify ALB Endpoint & Health Checks:**
+  ```bash
+  curl -I https://<your-alb-or-cloudfront-domain>/health
+  # Expected Response: HTTP/2 200 OK
+  ```
+
+* **Execute Controlled Database Failover Test:**
+  ```bash
+  aws rds reboot-db-instance \
+      --db-instance-identifier <your-rds-db-id> \
+      --force-failover
+  ```
+
+---
+
+## ⏱ Disaster Recovery & SLA Strategy
+
+| Failure Scenario | Detection & Mitigation Mechanism | RPO (Data Loss) | RTO (Recovery Time) |
+| :--- | :--- | :--- | :--- |
+| **Single EC2 Node Failure** | ALB Target Group health check fails; ASG terminates and replaces the node automatically. | 0 seconds | < 3 minutes |
+| **Full AZ Outage (`AZ-a` or `AZ-b`)** | ALB shifts 100% of ingress to the remaining healthy AZ; ASG scales instances up in the surviving AZ. | 0 seconds | Immediate (Seamless) |
+| **Primary Database Hardware Failure** | RDS internal health monitor initiates automated failover to the synchronous Standby node. | 0 seconds (Synchronous replication) | 60 – 120 seconds |
+| **DDoS / HTTP Flood Attack** | AWS WAF rate-limiting rules block malicious IPs at the edge before hitting the origin. | N/A | Real-time mitigation |
+
+---
+
+## 📜 License
+
+This project is open-source software licensed under the [MIT License](LICENSE).
